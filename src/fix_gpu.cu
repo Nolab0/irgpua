@@ -5,23 +5,32 @@
 #include <numeric>
 #include <algorithm>
 #include <cmath>
+#include <cuda/atomic>
 
 __global__
-void compact(int* image, int size, int* predicate){
+void compact(int* image, int size, int* output, int *blockNb, cuda::std::atomic<char>* flags){
+
+    if (threadIdx.x == 0)
+        atomicAdd(blockNb, 1);
+
+    __syncthreads();
 
     extern __shared__ int sdata[];
 
     constexpr int garbage_val = -27;
+
+    int blockId = *blockNb - 1;
+
     int tid = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockId * blockDim.x + threadIdx.x;
 
     if (i >= size)
         return;
 
     if (image[i] != garbage_val)
-        sdata[i] = 1;
+        sdata[tid] = 1;
     else
-        sdata[i] = 0;
+        sdata[tid] = 0;
     __syncthreads();
 
     int val = sdata[tid];
@@ -39,51 +48,65 @@ void compact(int* image, int size, int* predicate){
     }
     __syncthreads();
 
-    if (val != garbage_val){
-        printf("%d ", image[i]);
-        image[sdata[tid] - val] = image[i];
+    flags[blockId].store('A');
+
+    while(blockId > 0 && flags[blockId - 1].load() != 'P')
+        continue;
+
+    if (val != 0){
+        output[(sdata[tid] - val) + blockId * blockDim.x - blockId * (blockDim.x / 3 + 1)] = image[i];
     }
+
+    flags[blockId].store('P');
 }
 
 void fix_image_gpu(Image& to_fix)
 {
-    const int image_size = to_fix.width * to_fix.height;
+    int image_size = 512;//to_fix.width * to_fix.height;
 
     constexpr int blocksize = 256;
     const int gridsize = (image_size + blocksize - 1) / blocksize;
 
-    const int size = 10;
-    const int finalSize = 6;
-    int* test = (int*)malloc(sizeof(int) * size);
-    for (int i = 0; i < size; i++){
+    int* blockNb;
+    cudaMalloc(&blockNb, sizeof(int));
+    cudaMemset(blockNb, 0, sizeof(int));
+    cuda::std::atomic<char>* flags;
+    cudaMalloc(&flags, sizeof(cuda::std::atomic<char>) * gridsize);
+    cudaMemset(flags, 'X', sizeof(cuda::std::atomic<char>) * gridsize);
+
+    int* test = (int*)malloc(sizeof(int) * image_size);
+    for (int i = 0; i < image_size; i++){
         if (i % 3 == 0)
             test[i] = -27;
-        else    
+        else
             test[i] = i;
     }
 
     int* image_gpu;
 
-    cudaMalloc(&image_gpu, sizeof(int) * size);
-    cudaMemcpy(image_gpu, test, sizeof(int) * size, cudaMemcpyHostToDevice);
+    cudaMalloc(&image_gpu, sizeof(int) * image_size);
+    cudaMemcpy(image_gpu, test, sizeof(int) * image_size, cudaMemcpyHostToDevice);
 
-    int* predicate_gpu;
+    int* output;
 
-    cudaMalloc(&predicate_gpu, sizeof(int) * size);
-    cudaMemset(predicate_gpu, 0, sizeof(int) * size);
+    cudaMalloc(&output, sizeof(int) * image_size);
+    cudaMemset(output, 0, sizeof(int) * image_size);
 
-    compact<<<1, blocksize, sizeof(int) * blocksize>>>(image_gpu, size, predicate_gpu);
+    compact<<<gridsize, blocksize, sizeof(int) * blocksize>>>(image_gpu, image_size, output, blockNb, flags);
 
-    int* predic = (int*)calloc(size, sizeof(int));
-    cudaMemcpy(predic, image_gpu, sizeof(int) * size, cudaMemcpyDeviceToHost);
+    int* predic = (int*)calloc(image_size, sizeof(int));
+    cudaMemcpy(predic, output, sizeof(int) * image_size, cudaMemcpyDeviceToHost);
 
-    /*for (int i = 0; i < size; i++){
+    std::cout << std::endl;
+    for (int i = 0; i < image_size - image_size / 3 - 1; i++){
         std::cout << predic[i] << " ";
-    }*/
+    }
 
     // #1 Compact
 
     // Build predicate vector
+
+    image_size = to_fix.width * to_fix.height;
 
     std::vector<int> predicate(to_fix.size(), 0);
 

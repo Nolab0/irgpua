@@ -32,6 +32,8 @@ set(CMAKE_CUDA_FLAGS "-Xcompiler -fopenmp --extended-lambda --generate-line-info
 
 add_executable(main src/main.cu src/fix_cpu.cu src/fix_gpu.cu)
 
+set_target_properties(main PROPERTIES CUDA_ARCHITECTURES "75")
+
 target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX)
 
 # BUILD_TYPE
