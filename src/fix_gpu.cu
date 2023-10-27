@@ -72,11 +72,11 @@ void map_fixer(int* image, int size){
     if (i >= size)
         return;
     if (i % 4 == 0)
-        image[i] = image[i] + 1 < 255 ? image[i] + 1 : 255;
+        image[i] = image[i] + 1 <= 255 ? image[i] + 1 : 255;
     else if (i % 4 == 1)
         image[i] = image[i] - 5 >= 0 ? image[i] - 5 : 0;
     else if (i % 4 == 2)
-        image[i] = image[i] + 3 < 255 ? image[i] + 3 : 255;
+        image[i] = image[i] + 3 <= 255 ? image[i] + 3 : 255;
     else if (i % 4 == 3)
         image[i] = image[i] - 8 >= 0 ? image[i] - 8 : 0;
 }
@@ -124,7 +124,6 @@ void apply_equalization(int* image, int* histogram, int size, int cdf_min){
 
 void fix_image_gpu(Image& to_fix)
 {
-    std::cout << to_fix.size() << "\n";
     const int image_size = to_fix.width * to_fix.height;
     constexpr int blocksize = 256;
     const int gridsize = (to_fix.size() + blocksize - 1) / blocksize;
@@ -151,8 +150,8 @@ void fix_image_gpu(Image& to_fix)
 
     compact_scan<<<gridsize, blocksize, sizeof(int) * blocksize + sizeof(int)>>>(image_gpu, to_fix.size(), blockNb, flags, predicate);
     compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size());
-    map_fixer<<<gridsize, blocksize>>>(image_gpu, image_size);
-    /*create_histogram<<<gridsize, blocksize>>>(image_gpu, histogram, image_size);
+    /*map_fixer<<<gridsize, blocksize>>>(image_gpu, image_size);
+    create_histogram<<<gridsize, blocksize>>>(image_gpu, histogram, image_size);
     scan_hist<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
@@ -164,11 +163,11 @@ void fix_image_gpu(Image& to_fix)
     cudaMemcpy(histogram, final_hist, sizeof(int) * 256, cudaMemcpyHostToDevice);
     apply_equalization<<<gridsize, blocksize>>>(image_gpu, histogram, image_size, cdf_min);*/
 
-    cudaMemcpy(to_fix.buffer, image_gpu, image_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(to_fix.buffer, image_gpu, to_fix.size() * sizeof(int), cudaMemcpyDeviceToHost);
 
     std::cout << image_size << "\n";
     for (int i = 0; i < image_size; ++i){
-        if (to_fix.buffer[i] < 0){
+        if (to_fix.buffer[i] == -27){
             std::cout << "index: " << i << " value: " << to_fix.buffer[i] << "\n";
             break;
         }
