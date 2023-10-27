@@ -2,6 +2,7 @@
 #include "pipeline.hh"
 #include "fix_cpu.cuh"
 #include "fix_gpu.cuh"
+#include "reduce.cuh"
 
 #include <vector>
 #include <iostream>
@@ -29,7 +30,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
 
     // -- Main loop containing image retring from pipeline and fixing
 
-    const int nb_images = 1;//pipeline.images.size();
+    const int nb_images = pipeline.images.size();
     std::vector<Image> images(nb_images);
 
     // - One CPU thread is launched for each image
@@ -64,7 +65,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     {
         auto& image = images[i];
         const int image_size = image.width * image.height;
-        image.to_sort.total = std::reduce(image.buffer, image.buffer + image_size, 0);
+        image.to_sort.total = reduce_gpu(image);
     }
 
     // - All totals are known, sort images accordingly (OPTIONAL)
