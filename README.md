@@ -98,3 +98,5 @@ make -j
 cd build
 ./bin/main
 ```
+
+### Test
