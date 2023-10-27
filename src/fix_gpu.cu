@@ -58,12 +58,12 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
 }
 
 __global__
-void compact_scatter(int* image, int* predicate, int size){
+void compact_scatter(int* image, int* predicate, int size, int* clean_image){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= size)
         return;
     if (image[i] != -27)
-        image[predicate[i] - 1] = image[i];
+        clean_image[predicate[i] - 1] = image[i];
 }
 
 __global__
@@ -122,6 +122,14 @@ void apply_equalization(int* image, int* histogram, int size, int cdf_min){
     image[i] = roundf(((histogram[image[i]] - cdf_min) / static_cast<float>(size - cdf_min)) * 255.0f);
 }
 
+__global__
+void pp(int* image, int size){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= size)
+        return;
+    printf("%d ", image[i]);
+}
+
 void fix_image_gpu(Image& to_fix)
 {
     const int image_size = to_fix.width * to_fix.height;
@@ -148,10 +156,15 @@ void fix_image_gpu(Image& to_fix)
     cudaMalloc(&image_gpu, sizeof(int) * to_fix.size());
     cudaMemcpy(image_gpu, to_fix.buffer, sizeof(int) * to_fix.size(), cudaMemcpyHostToDevice);
 
+    int* clean_image;
+    cudaMalloc(&clean_image, sizeof(int) * image_size);
+    cudaMemset(clean_image, -50, sizeof(int) * image_size);
+
     compact_scan<<<gridsize, blocksize, sizeof(int) * blocksize + sizeof(int)>>>(image_gpu, to_fix.size(), blockNb, flags, predicate);
-    compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size());
-    /*map_fixer<<<gridsize, blocksize>>>(image_gpu, image_size);
-    create_histogram<<<gridsize, blocksize>>>(image_gpu, histogram, image_size);
+    compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
+    //pp<<<gridsize, blocksize>>>(clean_image, image_size);
+    /*map_fixer<<<gridsize, blocksize>>>(clean_image, image_size);
+    create_histogram<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
     scan_hist<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
@@ -161,15 +174,17 @@ void fix_image_gpu(Image& to_fix)
     const int cdf_min = *first_none_zero;
 
     cudaMemcpy(histogram, final_hist, sizeof(int) * 256, cudaMemcpyHostToDevice);
-    apply_equalization<<<gridsize, blocksize>>>(image_gpu, histogram, image_size, cdf_min);*/
+    apply_equalization<<<gridsize, blocksize>>>(clean_image, histogram, image_size, cdf_min);*/
+    
+    cudaMemcpy(to_fix.buffer, clean_image, image_size * sizeof(int), cudaMemcpyDeviceToHost);
 
-    cudaMemcpy(to_fix.buffer, image_gpu, to_fix.size() * sizeof(int), cudaMemcpyDeviceToHost);
 
     std::cout << image_size << "\n";
     for (int i = 0; i < image_size; ++i){
-        if (to_fix.buffer[i] == -27){
+        if (to_fix.buffer[i] == -50){
             std::cout << "index: " << i << " value: " << to_fix.buffer[i] << "\n";
             break;
         }
+        //std::cout << to_fix.buffer[i] << " ";
     }
 }
