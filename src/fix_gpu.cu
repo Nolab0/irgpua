@@ -30,6 +30,109 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     }
     __syncthreads();
 
+
+    int stride = 1;
+
+    while (stride < 2 * blockDim.x){
+        int index = (threadIdx.x + 1) * stride * 2 - 1;
+        if (index < 2 * blockDim.x && (index - stride) >= 0)
+            sdata[index] += sdata[index - stride];
+        stride *= 2;
+        __syncthreads();
+    }
+    __syncthreads();
+
+    stride = blockDim.x / 2;
+    while (stride > 0){
+        __syncthreads();
+        int index = (threadIdx.x + 1) * stride * 2 - 1;
+        if (index + stride < 2 * blockDim.x)
+            sdata[index + stride] += sdata[index];
+        stride /= 2;
+    }
+
+    if (i < size && tid == 0)
+        flags[blockId].store('A');
+
+    while(i < size && blockId > 0 && flags[blockId - 1].load() != 'P')
+        continue;
+
+    __syncthreads();
+
+    if (i < size)
+        predicate[tid + blockId * blockDim.x] = sdata[tid];
+
+    __syncthreads();
+
+    if (i < size && blockId != 0)
+        predicate[tid + blockId * blockDim.x] += predicate[blockId * blockDim.x - 1];
+
+    if (i < size && tid == 0)
+        flags[blockId].store('P');
+}
+/*
+__global__
+void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* flags, int* predicate){
+
+    __shared__ int blockId;
+    if (threadIdx.x == 0)
+        blockId = atomicAdd(blockNb, 1);
+    __syncthreads();
+
+    extern __shared__ int sdata[];
+
+    constexpr int garbage_val = -27;
+
+    int tid = threadIdx.x;
+    int i = blockId * blockDim.x + threadIdx.x;
+
+    if (i < size){
+        if (image[i] != garbage_val)
+            sdata[tid] = 1;
+        else
+            sdata[tid] = 0;
+    }
+    __syncthreads();
+
+    for (int s = 1; s < blockDim.x; s *= 2) {
+        int data;
+        if (i < size && tid + s < blockDim.x){
+            data = sdata[tid];
+        }
+        __syncthreads();
+        if (i < size && tid + s < blockDim.x){
+            sdata[tid + s] += data;
+        }
+        __syncthreads();
+    }
+    __syncthreads();
+
+    if (i < size)
+        flags[blockId].store('A');
+
+    while(i < size && blockId > 0 && flag__global__
+void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* flags, int* predicate){
+
+    __shared__ int blockId;
+    if (threadIdx.x == 0)
+        blockId = atomicAdd(blockNb, 1);
+    __syncthreads();
+
+    extern __shared__ int sdata[];
+
+    constexpr int garbage_val = -27;
+
+    int tid = threadIdx.x;
+    int i = blockId * blockDim.x + threadIdx.x;
+
+    if (i < size){
+        if (image[i] != garbage_val)
+            sdata[tid] = 1;
+        else
+            sdata[tid] = 0;
+    }
+    __syncthreads();
+
     for (int s = 1; s < blockDim.x; s *= 2) {
         int data;
         if (i < size && tid + s < blockDim.x){
@@ -62,6 +165,13 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     if (i < size)
         flags[blockId].store('P');
 }
+
+    if (i < size && blockId != 0)
+        predicate[tid + blockId * blockDim.x] += predicate[blockId * blockDim.x - 1];
+
+    if (i < size)
+        flags[blockId].store('P');
+}*/
 
 __global__
 void compact_scatter(int* image, int* predicate, int size, int* output){
@@ -160,7 +270,7 @@ void fix_image_gpu(Image& to_fix)
     cudaMalloc(&clean_image, sizeof(int) * image_size);
     cudaMemset(clean_image, 0, sizeof(int) * image_size);
 
-    compact_scan<<<gridsize, blocksize, sizeof(int) * blocksize + sizeof(int)>>>(image_gpu, to_fix.size(), blockNb, flags, predicate);
+    compact_scan<<<gridsize, blocksize, sizeof(int) * blocksize * 2 + sizeof(int)>>>(image_gpu, to_fix.size(), blockNb, flags, predicate);
     compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
     map_fixer<<<gridsize, blocksize>>>(clean_image, image_size);
     create_histogram<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
