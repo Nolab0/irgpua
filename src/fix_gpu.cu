@@ -22,52 +22,56 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     int tid = threadIdx.x;
     int i = blockId * blockDim.x + threadIdx.x;
 
-    if (i >= size)
-        return;
-
-    if (image[i] != garbage_val)
-        sdata[tid] = 1;
-    else
-        sdata[tid] = 0;
+    if (i < size){
+        if (image[i] != garbage_val)
+            sdata[tid] = 1;
+        else
+            sdata[tid] = 0;
+    }
     __syncthreads();
 
     for (int s = 1; s < blockDim.x; s *= 2) {
         int data;
-        if (tid + s < blockDim.x){
+        if (i < size && tid + s < blockDim.x){
             data = sdata[tid];
         }
         __syncthreads();
-        if (tid + s < blockDim.x){
+        if (i < size && tid + s < blockDim.x){
             sdata[tid + s] += data;
         }
         __syncthreads();
     }
     __syncthreads();
 
-    flags[blockId].store('A');
+    if (i < size)
+        flags[blockId].store('A');
 
-    while(blockId > 0 && flags[blockId - 1].load() != 'P')
+    while(i < size && blockId > 0 && flags[blockId - 1].load() != 'P')
         continue;
 
     __syncthreads();
 
-    predicate[tid + blockId * blockDim.x] = sdata[tid];
+    if (i < size)
+        predicate[tid + blockId * blockDim.x] = sdata[tid];
 
     __syncthreads();
 
-    if (blockId != 0)
+    if (i < size && blockId != 0)
         predicate[tid + blockId * blockDim.x] += predicate[blockId * blockDim.x - 1];
 
-    flags[blockId].store('P');
+    if (i < size)
+        flags[blockId].store('P');
 }
 
 __global__
-void compact_scatter(int* image, int* predicate, int size){
+void compact_scatter(int* image, int* predicate, int size, int* output){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= size)
-        return;
-    if (image[i] != -27)
-        image[predicate[i] - 1] = image[i];
+    int val;
+    if (i < size)
+        val = image[i];
+    __syncthreads();
+    if (i < size && val != -27)
+        output[predicate[i] - 1] = val;
 }
 
 __global__
@@ -152,10 +156,14 @@ void fix_image_gpu(Image& to_fix)
     cudaMalloc(&image_gpu, sizeof(int) * to_fix.size());
     cudaMemcpy(image_gpu, to_fix.buffer, sizeof(int) * to_fix.size(), cudaMemcpyHostToDevice);
 
+    int* clean_image;
+    cudaMalloc(&clean_image, sizeof(int) * image_size);
+    cudaMemset(clean_image, 0, sizeof(int) * image_size);
+
     compact_scan<<<gridsize, blocksize, sizeof(int) * blocksize + sizeof(int)>>>(image_gpu, to_fix.size(), blockNb, flags, predicate);
-    compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size());
-    map_fixer<<<gridsize, blocksize>>>(image_gpu, image_size);
-    create_histogram<<<gridsize, blocksize>>>(image_gpu, histogram, image_size);
+    compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
+    map_fixer<<<gridsize, blocksize>>>(clean_image, image_size);
+    create_histogram<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
     scan_hist<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
@@ -165,7 +173,7 @@ void fix_image_gpu(Image& to_fix)
     const int cdf_min = *first_none_zero;
 
     cudaMemcpy(histogram, final_hist, sizeof(int) * 256, cudaMemcpyHostToDevice);
-    apply_equalization<<<gridsize, blocksize>>>(image_gpu, histogram, image_size, cdf_min);
+    apply_equalization<<<gridsize, blocksize>>>(clean_image, histogram, image_size, cdf_min);
     
-    cudaMemcpy(to_fix.buffer, image_gpu, image_size * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(to_fix.buffer, clean_image, image_size * sizeof(int), cudaMemcpyDeviceToHost);
 }

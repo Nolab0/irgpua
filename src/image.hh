@@ -117,6 +117,7 @@ struct Image
     struct ToSort
     {
         uint64_t total = 0;
+        uint64_t totalCPU = 0;
         int id = -1;
     } to_sort;
 };

@@ -8,20 +8,27 @@
 #include <cuda/atomic>
 
 __global__
-void kernel_reduce(int* buffer, int* total, int size)
-{
+void kernel_reduce(int* buffer, int* total, int size) {
     extern __shared__ int sdata[];
 
     unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    sdata[tid] = buffer[i];
+    unsigned int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+
+    if (i < size) {
+        int val = buffer[i];
+        if (i + blockDim.x < size) {
+            val += buffer[i + blockDim.x];
+        }
+        sdata[tid] = val;
+    } else {
+        sdata[tid] = 0;
+    }
     __syncthreads();
 
-
-    for (int s = 1; tid + s < blockDim.x; s *= 2) {
-        if (tid % (2 * s) == 0)
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
             sdata[tid] += sdata[tid + s];
-
+        }
         __syncthreads();
     }
 

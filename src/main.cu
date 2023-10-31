@@ -66,6 +66,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
         auto& image = images[i];
         const int image_size = image.width * image.height;
         image.to_sort.total = reduce_gpu(image);
+        image.to_sort.totalCPU = std::reduce(image.buffer, image.buffer + image_size, 0);
     }
 
     // - All totals are known, sort images accordingly (OPTIONAL)
@@ -91,7 +92,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     // If you did the sorting, check that the ids are in the same order
     for (int i = 0; i < nb_images; ++i)
     {
-        std::cout << "Image #" << images[i].to_sort.id << " total : " << images[i].to_sort.total << std::endl;
+        std::cout << "Image #" << images[i].to_sort.id << " total : " << images[i].to_sort.total << " (" << (images[i].to_sort.totalCPU == images[i].to_sort.total) << ")" << " " << images[i].to_sort.totalCPU << std::endl;
         std::ostringstream oss;
         oss << "Image#" << images[i].to_sort.id << ".pgm";
         std::string str = oss.str();
