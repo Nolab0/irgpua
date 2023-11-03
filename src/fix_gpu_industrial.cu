@@ -95,15 +95,21 @@ void fix_image_gpu_industrial(Image& to_fix)
     cudaMalloc(&predicate, sizeof(int) * to_fix.size());
     cudaMemset(predicate, 0, sizeof(int) * to_fix.size());
 
-    void *d_temp_storage = nullptr;
-    size_t temp_storage_bytes = 0;
-    cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, predicate, predicate, image_size);
+    void *d_temp_storage_compact = nullptr;
+    size_t temp_storage_bytes_compact = 0;
+    cub::DeviceScan::ExclusiveSum(d_temp_storage_compact, temp_storage_bytes_compact, predicate, predicate, image_size);
 
-    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    cudaMalloc(&d_temp_storage_compact, temp_storage_bytes_compact);
 
     int *histogram;
     cudaMalloc(&histogram, sizeof(int) * 256);
     cudaMemset(histogram, 0, sizeof(int) * 256);
+
+    void *d_temp_storage_hist = nullptr;
+    size_t temp_storage_bytes_hist = 0;
+    cub::DeviceScan::InclusiveSum(d_temp_storage_hist, temp_storage_bytes_hist, histogram, histogram, image_size);
+
+    cudaMalloc(&d_temp_storage_hist, temp_storage_bytes_hist);
 
     int* image_gpu;
     cudaMalloc(&image_gpu, sizeof(int) * to_fix.size());
@@ -114,12 +120,12 @@ void fix_image_gpu_industrial(Image& to_fix)
     cudaMemset(clean_image, 0, sizeof(int) * image_size);
 
     build_predicate<<<gridsize, blocksize>>>(image_gpu, to_fix.size(), predicate);
-    cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, predicate, predicate, to_fix.size());
+    cub::DeviceScan::ExclusiveSum(d_temp_storage_compact, temp_storage_bytes_compact, predicate, predicate, to_fix.size());
     compact_scatter_industrial<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
 
     map_fixer_industrial<<<gridsize, blocksize>>>(clean_image, image_size);
     create_histogram_industrial<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
-    scan_hist_industrial<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
+    cub::DeviceScan::InclusiveSum(d_temp_storage_hist, temp_storage_bytes_hist, histogram, histogram, 256);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
     cudaMemcpy(final_hist, histogram, sizeof(int) * 256, cudaMemcpyDeviceToHost);
