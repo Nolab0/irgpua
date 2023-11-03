@@ -19,7 +19,7 @@ void build_predicate(int* image, int size, int* predicate){
 }
 
 __global__
-void compact_scatter(int* image, int* predicate, int size, int* output){
+void compact_scatter_industrial(int* image, int* predicate, int size, int* output){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int val;
     if (i < size)
@@ -30,7 +30,7 @@ void compact_scatter(int* image, int* predicate, int size, int* output){
 }
 
 __global__
-void map_fixer(int* image, int size){
+void map_fixer_industrial(int* image, int size){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= size)
         return;
@@ -45,14 +45,14 @@ void map_fixer(int* image, int size){
 }
 
 __global__
-void create_histogram(int* image, int* histogram, int size){
+void create_histogram_industrial(int* image, int* histogram, int size){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size)
         atomicAdd(&histogram[image[i]], 1);
 }
 
 __global__
-void scan_hist(int* hist){
+void scan_hist_industrial(int* hist){
     extern __shared__ int sdata[];
 
     int tid = threadIdx.x;
@@ -78,7 +78,7 @@ void scan_hist(int* hist){
 }
 
 __global__
-void apply_equalization(int* image, int* histogram, int size, int cdf_min){
+void apply_equalization_industrial(int* image, int* histogram, int size, int cdf_min){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= size)
         return;
@@ -115,11 +115,11 @@ void fix_image_gpu_industrial(Image& to_fix)
 
     build_predicate<<<gridsize, blocksize>>>(image_gpu, to_fix.size(), predicate);
     cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, predicate, predicate, to_fix.size());
-    compact_scatter<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
+    compact_scatter_industrial<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
 
-    map_fixer<<<gridsize, blocksize>>>(clean_image, image_size);
-    create_histogram<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
-    scan_hist<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
+    map_fixer_industrial<<<gridsize, blocksize>>>(clean_image, image_size);
+    create_histogram_industrial<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
+    scan_hist_industrial<<<1, blocksize, sizeof(int) * 256 + sizeof(int)>>>(histogram);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
     cudaMemcpy(final_hist, histogram, sizeof(int) * 256, cudaMemcpyDeviceToHost);
@@ -128,7 +128,7 @@ void fix_image_gpu_industrial(Image& to_fix)
     const int cdf_min = *first_none_zero;
 
     cudaMemcpy(histogram, final_hist, sizeof(int) * 256, cudaMemcpyHostToDevice);
-    apply_equalization<<<gridsize, blocksize>>>(clean_image, histogram, image_size, cdf_min);
+    apply_equalization_industrial<<<gridsize, blocksize>>>(clean_image, histogram, image_size, cdf_min);
     
     cudaMemcpy(to_fix.buffer, clean_image, image_size * sizeof(int), cudaMemcpyDeviceToHost);
 }

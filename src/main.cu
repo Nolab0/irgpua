@@ -2,6 +2,7 @@
 #include "pipeline.hh"
 #include "fix_cpu.cuh"
 #include "fix_gpu_industrial.cuh"
+#include "fix_gpu.cuh"
 #include "reduce.cuh"
 
 #include <vector>

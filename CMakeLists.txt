@@ -30,7 +30,7 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 set(CMAKE_CUDA_FLAGS "-Xcompiler -fopenmp --extended-lambda --generate-line-info --expt-relaxed-constexpr ${CMAKE_CUDA_FLAGS}")
 #set(CMAKE_CUDA_FLAGS "--ptxas-options=-v --generate-line-info")
 
-add_executable(main src/main.cu src/fix_cpu.cu src/fix_gpu_industrial.cu src/reduce.cu)
+add_executable(main src/main.cu src/fix_cpu.cu src/fix_gpu_industrial.cu src/fix_gpu.cu src/reduce.cu)
 
 set_target_properties(main PROPERTIES CUDA_ARCHITECTURES "75")
 
