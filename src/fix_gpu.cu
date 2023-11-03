@@ -7,7 +7,10 @@
 #include <cmath>
 #include <cuda/atomic>
 
-__global__
+// We tried to implement Brent-Kung scan because the last value of each block (the sum of the block to propagate to the next one)
+// is available before the end of the scan, so it would allow the next block to compute its value earlier. However, we were not able
+// to make it work.
+/*__global__
 void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* flags, int* predicate){
 
     __shared__ int blockId;
@@ -42,6 +45,18 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     }
     __syncthreads();
 
+    if (i < size && blockId < gridDim.x - 1)
+        predicate[tid + (blockId + 1) * blockDim.x] += sdata[blockDim.x - 1];
+    
+    __syncthreads();
+
+    if (i < size && blockId == 0 && tid == 0)
+        flags[blockId].store('P');
+    else if (i < size && tid == 0 && blockId > 0 && flags[blockId - 1].load() == 'P')
+        flags[blockId].store('P');
+
+    __syncthreads();
+
     stride = blockDim.x / 2;
     while (stride > 0){
         __syncthreads();
@@ -51,26 +66,24 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
         stride /= 2;
     }
 
-    if (i < size && tid == 0)
-        flags[blockId].store('A');
+    __syncthreads();
+
+    if (i < size)
+        predicate[tid + blockId * blockDim.x] += sdata[tid];
+
+    __syncthreads();
 
     while(i < size && blockId > 0 && flags[blockId - 1].load() != 'P')
         continue;
 
     __syncthreads();
 
-    if (i < size)
-        predicate[tid + blockId * blockDim.x] = sdata[tid];
-
-    __syncthreads();
-
-    if (i < size && blockId != 0)
-        predicate[tid + blockId * blockDim.x] += predicate[blockId * blockDim.x - 1];
-
     if (i < size && tid == 0)
         flags[blockId].store('P');
-}
-/*
+}*/
+
+
+// Kogge-Stone scan with decoupled-loop back
 __global__
 void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* flags, int* predicate){
 
@@ -110,45 +123,6 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     if (i < size)
         flags[blockId].store('A');
 
-    while(i < size && blockId > 0 && flag__global__
-void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* flags, int* predicate){
-
-    __shared__ int blockId;
-    if (threadIdx.x == 0)
-        blockId = atomicAdd(blockNb, 1);
-    __syncthreads();
-
-    extern __shared__ int sdata[];
-
-    constexpr int garbage_val = -27;
-
-    int tid = threadIdx.x;
-    int i = blockId * blockDim.x + threadIdx.x;
-
-    if (i < size){
-        if (image[i] != garbage_val)
-            sdata[tid] = 1;
-        else
-            sdata[tid] = 0;
-    }
-    __syncthreads();
-
-    for (int s = 1; s < blockDim.x; s *= 2) {
-        int data;
-        if (i < size && tid + s < blockDim.x){
-            data = sdata[tid];
-        }
-        __syncthreads();
-        if (i < size && tid + s < blockDim.x){
-            sdata[tid + s] += data;
-        }
-        __syncthreads();
-    }
-    __syncthreads();
-
-    if (i < size)
-        flags[blockId].store('A');
-
     while(i < size && blockId > 0 && flags[blockId - 1].load() != 'P')
         continue;
 
@@ -165,13 +139,6 @@ void compact_scan(int* image, int size, int *blockNb, cuda::std::atomic<char>* f
     if (i < size)
         flags[blockId].store('P');
 }
-
-    if (i < size && blockId != 0)
-        predicate[tid + blockId * blockDim.x] += predicate[blockId * blockDim.x - 1];
-
-    if (i < size)
-        flags[blockId].store('P');
-}*/
 
 __global__
 void compact_scatter(int* image, int* predicate, int size, int* output){
