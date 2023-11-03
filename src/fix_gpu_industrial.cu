@@ -7,6 +7,10 @@
 #include <cmath>
 #include <cuda/atomic>
 #include <cub/cub.cuh>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/count.h>
+#include <thrust/execution_policy.h>
 
 __global__
 void build_predicate(int* image, int size, int* predicate){
@@ -47,11 +51,15 @@ void map_fixer_industrial(int* image, int size){
     }
 }
 
-__global__
-void create_histogram_industrial(int* image, int* histogram, int size){
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < size)
-        atomicAdd(&histogram[image[i]], 1);
+void compute_histogram(const int* d_image, int* d_histogram, int image_size) {
+    thrust::device_vector<int> d_image_vec(d_image, d_image + image_size);
+    thrust::device_vector<int> d_hist_vec(256, 0);
+
+    for (int i = 0; i < 256; ++i) {
+        d_hist_vec[i] = thrust::count(thrust::device, d_image_vec.begin(), d_image_vec.end(), i);
+    }
+
+    thrust::copy(d_hist_vec.begin(), d_hist_vec.end(), d_histogram);
 }
 
 __global__
@@ -101,7 +109,7 @@ void fix_image_gpu_industrial(Image& to_fix)
     compact_scatter_industrial<<<gridsize, blocksize>>>(image_gpu, predicate, to_fix.size(), clean_image);
 
     map_fixer_industrial<<<gridsize, blocksize>>>(clean_image, image_size);
-    create_histogram_industrial<<<gridsize, blocksize>>>(clean_image, histogram, image_size);
+    compute_histogram(clean_image, histogram, image_size);
     cub::DeviceScan::InclusiveSum(d_temp_storage_hist, temp_storage_bytes_hist, histogram, histogram, 256);
 
     int* final_hist = (int*)calloc(256, sizeof(int));
