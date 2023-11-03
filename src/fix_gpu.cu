@@ -154,16 +154,19 @@ void compact_scatter(int* image, int* predicate, int size, int* output){
 __global__
 void map_fixer(int* image, int size){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= size)
-        return;
-    if (i % 4 == 0)
-        image[i] = image[i] + 1 <= 255 ? image[i] + 1 : 255;
-    else if (i % 4 == 1)
-        image[i] = image[i] - 5 >= 0 ? image[i] - 5 : 0;
-    else if (i % 4 == 2)
-        image[i] = image[i] + 3 <= 255 ? image[i] + 3 : 255;
-    else if (i % 4 == 3)
-        image[i] = image[i] - 8 >= 0 ? image[i] - 8 : 0;
+    if (i < size) {
+        int offset = i % 4;
+        int value = image[i];
+        if (offset == 0)
+            value = (value + 1 <= 255) ? (value + 1) : 255;
+        else if (offset == 1)
+            value = (value - 5 >= 0) ? (value - 5) : 0;
+        else if (offset == 2)
+            value = (value + 3 <= 255) ? (value + 3) : 255;
+        else if (offset == 3)
+            value = (value - 8 >= 0) ? (value - 8) : 0;
+        image[i] = value;
+    }
 }
 
 __global__

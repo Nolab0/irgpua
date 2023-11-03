@@ -32,16 +32,19 @@ void compact_scatter_industrial(int* image, int* predicate, int size, int* outpu
 __global__
 void map_fixer_industrial(int* image, int size){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= size)
-        return;
-    if (i % 4 == 0)
-        image[i] = image[i] + 1 <= 255 ? image[i] + 1 : 255;
-    else if (i % 4 == 1)
-        image[i] = image[i] - 5 >= 0 ? image[i] - 5 : 0;
-    else if (i % 4 == 2)
-        image[i] = image[i] + 3 <= 255 ? image[i] + 3 : 255;
-    else if (i % 4 == 3)
-        image[i] = image[i] - 8 >= 0 ? image[i] - 8 : 0;
+    if (i < size) {
+        int offset = i % 4;
+        int value = image[i];
+        if (offset == 0)
+            value = (value + 1 <= 255) ? (value + 1) : 255;
+        else if (offset == 1)
+            value = (value - 5 >= 0) ? (value - 5) : 0;
+        else if (offset == 2)
+            value = (value + 3 <= 255) ? (value + 3) : 255;
+        else if (offset == 3)
+            value = (value - 8 >= 0) ? (value - 8) : 0;
+        image[i] = value;
+    }
 }
 
 __global__
@@ -49,32 +52,6 @@ void create_histogram_industrial(int* image, int* histogram, int size){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size)
         atomicAdd(&histogram[image[i]], 1);
-}
-
-__global__
-void scan_hist_industrial(int* hist){
-    extern __shared__ int sdata[];
-
-    int tid = threadIdx.x;
-
-    sdata[tid] = hist[tid];
-
-    __syncthreads();
-
-    for (int s = 1; s < blockDim.x; s *= 2) {
-        int data;
-        if (tid + s < blockDim.x){
-            data = sdata[tid];
-        }
-        __syncthreads();
-        if (tid + s < blockDim.x){
-            sdata[tid + s] += data;
-        }
-        __syncthreads();
-    }
-    __syncthreads();
-
-    hist[tid] = sdata[tid];
 }
 
 __global__
