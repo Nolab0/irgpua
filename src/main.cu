@@ -66,7 +66,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     {
         auto& image = images[i];
         const int image_size = image.width * image.height;
-        image.to_sort.total = reduce_gpu(image);
+        image.to_sort.total = reduce_gpu_industrial(image);
         image.to_sort.totalCPU = std::reduce(image.buffer, image.buffer + image_size, 0);
     }
 

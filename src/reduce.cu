@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cuda/atomic>
+#include <cub/device/device_reduce.cuh>
+#include <cub/util_allocator.cuh>
 
 __global__
 void kernel_reduce(int* buffer, int* total, int size) {
@@ -50,6 +52,40 @@ int reduce_gpu(Image& image)
     cudaMemset(total, 0, sizeof(int));
 
 	kernel_reduce<<<gridsize, blocksize, sizeof(int) * blocksize>>>(image_gpu, total, image_size);
+
+    int *total_local = (int*)malloc(sizeof(int));
+    cudaMemcpy(total_local, total, sizeof(int), cudaMemcpyDeviceToHost);
+
+    return *total_local;
+}
+
+int reduce_gpu_industrial(Image& image) {
+    const int image_size = image.width * image.height;
+
+    int* image_gpu;
+    cudaMalloc(&image_gpu, sizeof(int) * image_size);
+    cudaMemcpy(image_gpu, image.buffer, sizeof(int) * image_size, cudaMemcpyHostToDevice);
+
+     // Allouez la mémoire pour le total avec la valeur initialisée à 0
+    int* total;
+    cudaMalloc(&total, sizeof(int));
+    cudaMemset(total, 0, sizeof(int));
+    // Déclarez le stockage temporaire pour CUB
+    void* d_temp_storage = nullptr;
+    size_t temp_storage_bytes = 0;
+
+    // Appelez d'abord ExclusiveSum sans stockage temporaire pour obtenir la taille du stockage temporaire nécessaire
+    cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, image_gpu, &total, image_size);
+
+    // Allouez le stockage temporaire pour l'opération de réduction
+    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+    // Exécutez la réduction pour obtenir le total
+    cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, image_gpu, &total, image_size);
+
+    // Nettoyez la mémoire temporaire et l'image GPU
+    cudaFree(d_temp_storage);
+    cudaFree(image_gpu);
 
     int *total_local = (int*)malloc(sizeof(int));
     cudaMemcpy(total_local, total, sizeof(int), cudaMemcpyDeviceToHost);
