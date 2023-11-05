@@ -12,6 +12,9 @@
 #include <filesystem>
 #include <numeric>
 
+// Change this line to 'true' to use industrial code
+#define INDUSTRIAL true
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
 {
     // -- Pipeline initialization
@@ -49,7 +52,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
         // You must get the image from the pipeline as they arrive and launch computations right away
         // There are still ways to speeds this process of course (wait for last class)
         images[i] = pipeline.get_image(i);
-        fix_image_gpu_industrial(images[i]);
+        if (INDUSTRIAL)
+            fix_image_gpu_industrial(images[i]);
+        else
+            fix_image_gpu(images[i]);
     }
 
     std::cout << "Done with compute, starting stats" << std::endl;
@@ -66,7 +72,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     {
         auto& image = images[i];
         const int image_size = image.width * image.height;
-        image.to_sort.total = reduce_gpu_industrial(image);
+        if (INDUSTRIAL)
+            image.to_sort.total = reduce_gpu_industrial(image);
+        else
+            image.to_sort.total = reduce_gpu(image);
         image.to_sort.totalCPU = std::reduce(image.buffer, image.buffer + image_size, 0);
     }
 

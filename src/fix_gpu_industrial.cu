@@ -122,4 +122,9 @@ void fix_image_gpu_industrial(Image& to_fix)
     apply_equalization_industrial<<<gridsize, blocksize>>>(clean_image, histogram, image_size, cdf_min);
     
     cudaMemcpy(to_fix.buffer, clean_image, image_size * sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(predicate);
+    cudaFree(histogram);
+    cudaFree(image_gpu);
+    cudaFree(clean_image);
 }
