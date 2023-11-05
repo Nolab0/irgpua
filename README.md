@@ -1,5 +1,7 @@
 # IRGPUA PROJECT
 
+# GROUP: Jean FECHTER - Thibault BOUTET - Nicolas MULLER
+
 ## Project presentation :
 
 ### Introduction
