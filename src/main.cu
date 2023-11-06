@@ -13,7 +13,7 @@
 #include <numeric>
 
 // Change this line to 'true' to use industrial code
-#define INDUSTRIAL true
+#define INDUSTRIAL false
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
 {

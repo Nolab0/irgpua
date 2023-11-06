@@ -2,6 +2,14 @@
 
 # GROUP: Jean FECHTER - Thibault BOUTET - Nicolas MULLER
 
+### Build
+
+mkdir build && cd build
+cmake ..
+make -j && ./main
+
+To use the industrial version, change the macro "INDUSTRIAL" from false to true in main.cu line 16.
+
 ## Project presentation :
 
 ### Introduction
